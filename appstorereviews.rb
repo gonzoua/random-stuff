@@ -30,8 +30,6 @@
 
 require 'rubygems'
 require 'mechanize'
-require 'iso_country_codes'
-require 'json'
 require 'digest/md5'
 require 'pony'
 require 'fsdb'
@@ -61,108 +59,102 @@ class AppReview
 end
 
 class AppStore
-  @@markets = [
-    'Argentina',
-    'Armenia',
-    'Australia',
-    'Austria',
-    'Belgium',
-    'Botswana',
-    'Brazil',
-    'Bulgaria',
-    'Canada',
-    'Chile',
-    'China',
-    'Colombia',
-    'Costa Rica',
-    'Croatia',
-    'Czech Republic',
-    'Denmark',
-    'Dominican Rep.',
-    'Ecuador',
-    'Egypt',
-    'El Salvador',
-    'Estonia',
-    'Finland',
-    'France',
-    'Germany',
-    'Greece',
-    'Guatemala',
-    'Honduras',
-    'Hong Kong',
-    'Hungary',
-    'India',
-    'Indonesia',
-    'Ireland',
-    'Israel',
-    'Italy',
-    'Jamaica',
-    'Japan',
-    'Jordan',
-    'Kazakhstan',
-    'Kenya',
-    'Korea, Republic Of',
-    'Kuwait',
-    'Latvia',
-    'Lebanon',
-    'Lithuania',
-    'Luxembourg',
-    'Macao',
-    'Macedonia, The Former Yugoslav Republic Of',
-    'Madagascar',
-    'Malaysia',
-    'Mali',
-    'Malta',
-    'Mauritius',
-    'Mexico',
-    'Moldova, Republic Of',
-    'Netherlands',
-    'New Zealand',
-    'Nicaragua',
-    'Niger',
-    'Norway',
-    'Pakistan',
-    'Panama',
-    'Paraguay',
-    'Peru',
-    'Philippines',
-    'Poland',
-    'Portugal',
-    'Qatar',
-    'Romania',
-    'Russia',
-    'Saudi Arabia',
-    'Senegal',
-    'Singapore',
-    'Slovakia',
-    'Slovenia',
-    'South Africa',
-    'Spain',
-    'Sri Lanka',
-    'Sweden',
-    'Switzerland',
-    'Taiwan',
-    'Thailand',
-    'Tunisia',
-    'Turkey',
-    'Uganda',
-    'United Kingdom',
-    'United Arab Emirates',
-    'Uruguay',
-    'USA',
-    'Venezuela',
-    'Viet Nam'];
-
-  def initialize
-    @ua = Mechanize.new { |agent|
-      agent.user_agent_alias = 'Mac Safari'
-      # agent.log = Logger.new(STDERR)
-    }
-  end
+  @@markets = {
+    'Argentina' => 143505,
+    'Armenia' => 143524,
+    'Australia' => 143460,
+    'Austria' => 143445,
+    'Belgium' => 143446,
+    'Botswana' => 143525,
+    'Brazil' => 143503,
+    'Bulgaria' => 143526,
+    'Canada' => 143455,
+    'Chile' => 143483,
+    'China' => 143465,
+    'Colombia' => 143501,
+    'Costa Rica' => 143495,
+    'Croatia' => 143494,
+    'Czech Republic' => 143489,
+    'Denmark' => 143458,
+    'Dominican Rep.' => 143508,
+    'Ecuador' => 143509,
+    'Egypt' => 143516,
+    'El Salvador' => 143506,
+    'Estonia' => 143518,
+    'Finland' => 143447,
+    'France' => 143442,
+    'Germany' => 143443,
+    'Greece' => 143448,
+    'Guatemala' => 143504,
+    'Honduras' => 143510,
+    'Hong Kong' => 143463,
+    'Hungary' => 143482,
+    'India' => 143467,
+    'Indonesia' => 143476,
+    'Ireland' => 143449,
+    'Israel' => 143491,
+    'Italy' => 143450,
+    'Jamaica' => 143511,
+    'Japan' => 143462,
+    'Jordan' => 143528,
+    'Kazakhstan' => 143517,
+    'Kenya' => 143529,
+    'Korea' => 143466,
+    'Kuwait' => 143493,
+    'Latvia' => 143519,
+    'Lebanon' => 143497,
+    'Lithuania' => 143520,
+    'Luxembourg' => 143451,
+    'Macau' => 143515,
+    'Macedonia' => 143530,
+    'Madagascar' => 143531,
+    'Malaysia' => 143473,
+    'Mali' => 143532,
+    'Malta' => '143521',
+    'Mauritius' => 143533,
+    'Mexico' => 143468,
+    'Moldova' => 143523,
+    'Netherlands' => 143452,
+    'New Zealand' => 143461,
+    'Nicaragua' => 143512,
+    'Niger' => 143534,
+    'Norway' => 143457,
+    'Pakistan' => 143477,
+    'Panama' => 143485,
+    'Paraguay' => 143513,
+    'Peru' => 143507,
+    'Philippines' => 143474,
+    'Poland' => 143478,
+    'Portugal' => 143453,
+    'Qatar' => 143498,
+    'Romania' => 143487,
+    'Russia' => 143469,
+    'Saudi Arabia' => 143479,
+    'Senegal' => 143535,
+    'Singapore' => 143464,
+    'Slovakia' => 143496,
+    'Slovenia' => 143499,
+    'South Africa' => 143472,
+    'Spain' => 143454,
+    'Sri Lanka' => 143486,
+    'Sweden' => 143456,
+    'Switzerland' => 143459,
+    'Taiwan' => 143470,
+    'Thailand' => 143475,
+    'Tunisia' => 143536,
+    'Turkey' => 143480,
+    'Uganda' => 143537,
+    'United Kingdom' => 143444,
+    'United Arab Emirates' => 143481,
+    'Uruguay' => 143514,
+    'USA' => 143441,
+    'Venezuela' => 143502,
+    'Vietnam' => 143471
+  };
 
   def get_all_reviews(appid)
     reviews = Array.new
-    @@markets.each do |m|
+    @@markets.keys.each do |m|
       reviews += get_market_reviews(appid, m)
     end
     return reviews
@@ -170,33 +162,41 @@ class AppStore
 
   def get_market_reviews(appid, market)
     reviews = Array.new
-    iso = IsoCountryCodes.find(market.downcase, :fuzzy => true).alpha2.downcase
-    json_info = @ua.get("http://ax.itunes.apple.com/WebObjects/MZStoreServices.woa/wa/wsLookup?id=#{appid}&country=#{iso}")
-    result = JSON.parse(json_info.body)
-    application = "app#{appid}"
-    if result.has_key?('resultCount') then
-      return [] if result['resultCount'] == 0
-      r = result['results'][0]
-      url = r['trackViewUrl']
-      application = r['trackName']
-    else
-      # XXX: throw exception here?
-      return []
+    code = @@markets[market]
+
+    ua = Mechanize.new { |agent|
+      agent.user_agent = 'iTunes/4.2 (Macintosh; U; PPC Mac OS X 10.2)'
+      # agent.log = Logger.new(STDERR)
+    }
+
+    ua.pre_connect_hooks << lambda do |params|
+      params[:request]['X-Apple-Store-Front'] = "#{code}-1"
     end
 
-    reviews_page = @ua.get(url)
-    rating_nodes = reviews_page.parser.xpath("//div[@class='customer-review']")
+    ns = {'itms' => 'http://www.apple.com/itms/'}
+    page = ua.get("http://ax.phobos.apple.com.edgesuite.net/WebObjects/MZStore.woa/wa/viewContentsUserReviews?id=#{appid}&pageNumber=0&sortOrdering=2&type=Purple+Software")
+    doc = Nokogiri::XML(page.body)
+    application = "app#{appid}"
+    app_node = doc.xpath('//itms:MatrixView/itms:VBoxView/itms:TextView/itms:SetFontStyle/itms:GotoURL', ns)
+    application = app_node.text if app_node != nil
+    application.sub!(/\s+/i, ' ')
+    application.strip!
+
+    rating_nodes = doc.xpath('//itms:VBoxView[@leftInset="10"]', ns)
     return [] if rating_nodes == nil
     rating_nodes.each do |r|
-      title = r.xpath("h5/span[@class='customerReviewTitle']/text()").text
+      title_node = r.xpath('itms:HBoxView/itms:TextView/itms:SetFontStyle/itms:b', ns)
+      title = title_node.text
       title.sub!(/\s+/i, ' ')
       title.strip!
-      user = r.xpath("span[@class='user-info']/text()").text
+      user_node = r.xpath('itms:HBoxView[2]/itms:TextView/itms:SetFontStyle/itms:GotoURL', ns)
+      user = user_node.text
       user.sub!(/\s+/i, ' ')
       user.strip!
-      star_nodes = r.xpath("h5/div/div/span[@class='rating-star']")
+      next if (user == '')
+      star_nodes = r.xpath('itms:HBoxView/itms:HBoxView/itms:HBoxView/itms:PictureView', ns)
       rating = star_nodes.count
-      text = r.xpath("p[@class='content more-text']/text()").text
+      text = r.xpath('itms:TextView', ns).text
       text.sub!(/\s+/i, ' ')
       text.strip!
       review = AppReview.new( :title => title, :author => user, :text => text, :rating => rating, :market => market, :application => application)
