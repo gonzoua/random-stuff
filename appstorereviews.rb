@@ -33,6 +33,7 @@ require 'mechanize'
 require 'digest/md5'
 require 'pony'
 require 'fsdb'
+require 'json'
 
 #
 # Configuration part
@@ -49,7 +50,7 @@ IDS_TABLE = 'review_ids'
 # Actual code
 #
 class AppReview
-  attr_accessor :author, :title, :text, :rating, :market, :application
+  attr_accessor :author, :title, :text, :rating, :market, :application, :date
   def initialize(args = {})
     args.each { |key,value| send("#{key}=", value) }  
   end
@@ -164,42 +165,69 @@ class AppStore
     reviews = Array.new
     code = @@markets[market]
 
+    p "#{appid} -- #{market}"
     ua = Mechanize.new { |agent|
-      agent.user_agent = 'iTunes/4.2 (Macintosh; U; PPC Mac OS X 10.2)'
+      agent.user_agent = 'iTunes/10.2.1 (Windows; Microsoft Windows XP Professional Service Pack 3 (Build 2600)) AppleWebKit/533.21.1'
       # agent.log = Logger.new(STDERR)
     }
 
     ua.pre_connect_hooks << lambda do |params|
-      params[:request]['X-Apple-Store-Front'] = "#{code}-1"
+      params[:request]['X-Apple-Store-Front'] = "#{code}-1,12"
     end
 
     ns = {'itms' => 'http://www.apple.com/itms/'}
-    page = ua.get("http://ax.phobos.apple.com.edgesuite.net/WebObjects/MZStore.woa/wa/viewContentsUserReviews?id=#{appid}&pageNumber=0&sortOrdering=2&type=Purple+Software")
-    doc = Nokogiri::XML(page.body)
+    json_info = ua.get("http://ax.itunes.apple.com/WebObjects/MZStoreServices.woa/wa/wsLookup?id=#{appid}&country=us")
+    result = JSON.parse(json_info.body)
     application = "app#{appid}"
-    app_node = doc.xpath('//itms:MatrixView/itms:VBoxView/itms:TextView/itms:SetFontStyle/itms:GotoURL', ns)
-    application = app_node.text if app_node != nil
+    if result.has_key?('resultCount') then
+      if result['resultCount'] > 0 then
+        r = result['results'][0]
+        application = r['trackName']
+      end
+    end
+
     application.sub!(/\s+/i, ' ')
     application.strip!
 
-    rating_nodes = doc.xpath('//itms:VBoxView[@leftInset="10"]', ns)
+    attempts = 10
+    failed = true
+    while failed and (attempts > 0) do
+      begin 
+        page = ua.get("http://ax.phobos.apple.com.edgesuite.net/WebObjects/MZStore.woa/wa/customerReviews?displayable-kind=11&id=#{appid}&sort=4")
+        failed = false
+      rescue Mechanize::ResponseCodeError
+        puts "Failed, sleep 2 seconds before retrying..."
+        sleep(2)
+        attempts -= 1
+      end
+    end
+
+    doc = Nokogiri::XML("<foo>#{page.body}</foo>")
+
+    all_reviews = doc.xpath('//div[@class="paginate all-reviews"]')
+    rating_nodes = all_reviews.xpath('div/div/div[@class="customer-review"]')
     return [] if rating_nodes == nil
     rating_nodes.each do |r|
-      title_node = r.xpath('itms:HBoxView/itms:TextView/itms:SetFontStyle/itms:b', ns)
+      title_node = r.xpath('h5/span[@class="customerReviewTitle"]')
       title = title_node.text
       title.sub!(/\s+/i, ' ')
       title.strip!
-      user_node = r.xpath('itms:HBoxView[2]/itms:TextView/itms:SetFontStyle/itms:GotoURL', ns)
+      user_node = r.xpath('span/a[@class="reviewer"]')
       user = user_node.text
       user.sub!(/\s+/i, ' ')
       user.strip!
       next if (user == '')
-      star_nodes = r.xpath('itms:HBoxView/itms:HBoxView/itms:HBoxView/itms:PictureView', ns)
+      date_node = r.xpath('span[@class="user-info"]')
+      s = date_node.text
+      lines = s.split("\n")
+      date = lines[-3]
+      date.sub!(/\s+/i, '')
+      star_nodes = r.xpath('h5/div/div/span[@class="rating-star"]')
       rating = star_nodes.count
-      text = r.xpath('itms:TextView', ns).text
+      text = r.xpath('p[@class="content more-text"]').text
       text.sub!(/\s+/i, ' ')
       text.strip!
-      review = AppReview.new( :title => title, :author => user, :text => text, :rating => rating, :market => market, :application => application)
+      review = AppReview.new( :title => title, :author => user, :text => text, :rating => rating, :market => market, :application => application, :date => date)
       reviews << review
     end
     return reviews
@@ -217,6 +245,7 @@ end
 store = AppStore.new
 APPS.each do |app_id|
   store.get_all_reviews(app_id).each do |review|
+    p review.uid
     next if (known_reviews.include?(review.uid))
     db.edit IDS_TABLE do |list|
       list << review.uid
@@ -225,7 +254,7 @@ APPS.each do |app_id|
     body = "#{review.title}\n"
     # \U2605 - star symbol
     body += [0x2605].pack("U*") * review.rating
-    body += " #{review.author} (#{review.market})\n"
+    body += " #{review.author} (#{review.market}), #{review.date}\n"
     body += "--------------------------------\n"
     body += review.text
 
