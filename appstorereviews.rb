@@ -225,6 +225,7 @@ class AppStore
       star_nodes = r.xpath('h5/div/div/span[@class="rating-star"]')
       rating = star_nodes.count
       text = r.xpath('p[@class="content more-text"]').text
+      text = r.xpath('p[@class="content"]').text if (text == '')
       text.sub!(/\s+/i, ' ')
       text.strip!
       review = AppReview.new( :title => title, :author => user, :text => text, :rating => rating, :market => market, :application => application, :date => date)
