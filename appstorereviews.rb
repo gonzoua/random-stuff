@@ -206,8 +206,16 @@ class AppStore
       # agent.log = Logger.new(STDERR)
     }
 
-    ua.pre_connect_hooks << lambda do |params|
-      params[:request]['X-Apple-Store-Front'] = "#{code}-1,12"
+    ua.pre_connect_hooks << lambda do |*pp|
+      if pp.count == 1 then
+        # Mechanize
+        params = pp[0]
+        params[:request]['X-Apple-Store-Front'] = "#{code}-1,12"
+      else
+        # Mechanize2
+        params = pp[1]
+        params['X-Apple-Store-Front'] = "#{code}-1,12"
+      end
     end
 
     ns = {'itms' => 'http://www.apple.com/itms/'}
